@@ -1,0 +1,8 @@
+*~
+*.rviz
+output/
+devel/
+build/
+*.sh
+.catkin_workspace
+.vscode/
