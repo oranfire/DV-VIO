@@ -30,6 +30,7 @@ void Estimator::clearState()
         Bas[i].setZero();
         Bgs[i].setZero();
         dt_buf[i].clear();
+        t_buf[i].clear();
         linear_acceleration_buf[i].clear();
         angular_velocity_buf[i].clear();
 
@@ -82,7 +83,7 @@ void Estimator::clearState()
     drift_correct_t = Vector3d::Zero();
 }
 
-void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity)
+void Estimator::processIMU(double t, double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity)
 {
     if (!first_imu)
     {
@@ -97,11 +98,12 @@ void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const
     }
     if (frame_count != 0)
     {
-        pre_integrations[frame_count]->push_back(dt, linear_acceleration, angular_velocity);
+        pre_integrations[frame_count]->push_back(t, dt, linear_acceleration, angular_velocity);
         //if(solver_flag != NON_LINEAR)
-            tmp_pre_integration->push_back(dt, linear_acceleration, angular_velocity);
+            tmp_pre_integration->push_back(t, dt, linear_acceleration, angular_velocity);
 
         dt_buf[frame_count].push_back(dt);
+        t_buf[frame_count].push_back(t);
         linear_acceleration_buf[frame_count].push_back(linear_acceleration);
         angular_velocity_buf[frame_count].push_back(angular_velocity);
 
@@ -187,7 +189,6 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     }
     else
     {
-        dio_manager->buildVelFactor();
         TicToc t_solve;
         solveOdometry();
         ROS_DEBUG("solver costs: %fms", t_solve.toc());
@@ -719,6 +720,35 @@ void Estimator::optimization()
         IMUFactor* imu_factor = new IMUFactor(pre_integrations[j]);
         problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j], para_SpeedBias[j]);
     }
+
+    NetOutput dio_out = dio_manager->buildVelFactor();
+    int dio_m_cnt = 0;
+    int dio_index = 0;
+    for (int i = 0; i < WINDOW_SIZE; i++)
+    {
+        int intg_index = 0;
+        while (dio_index < dio_out.time_stamp.size() && intg_index < pre_integrations[i+1]->t_buf.size())
+        {
+            if (dio_out.time_stamp[dio_index] < pre_integrations[i+1]->t_buf[intg_index]-1e-4)
+                dio_index++;
+            else if (dio_out.time_stamp[dio_index] > pre_integrations[i+1]->t_buf[intg_index]+1e-4)
+                intg_index++;
+            else
+            {
+                DIOVelFactor* dio_factor = new DIOVelFactor(pre_integrations[i+1], dio_out, intg_index, dio_index);
+                
+                // double* paras[2] = {(double*)&(para_Pose[i]), (double*)&(para_SpeedBias[i])};
+                // dio_factor->check((double**)paras);
+                // exit(1);
+
+                problem.AddResidualBlock(dio_factor, NULL, para_Pose[i], para_SpeedBias[i]);
+                intg_index++;
+                dio_index++;
+                dio_m_cnt++;
+            }
+        }
+    }
+    ROS_INFO("dio measurement count: %d", dio_m_cnt);
     
     int f_m_cnt = 0;
     int feature_index = -1;
@@ -744,19 +774,19 @@ void Estimator::optimization()
             Vector3d pts_j = it_per_frame.point;
             if (ESTIMATE_TD)
             {
-                    ProjectionTdFactor *f_td = new ProjectionTdFactor(pts_i, pts_j, it_per_id.feature_per_frame[0].velocity, it_per_frame.velocity,
-                                                                     it_per_id.feature_per_frame[0].cur_td, it_per_frame.cur_td,
-                                                                     it_per_id.feature_per_frame[0].uv.y(), it_per_frame.uv.y());
-                    problem.AddResidualBlock(f_td, loss_function, para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index], para_Td[0]);
-                    /*
-                    double **para = new double *[5];
-                    para[0] = para_Pose[imu_i];
-                    para[1] = para_Pose[imu_j];
-                    para[2] = para_Ex_Pose[0];
-                    para[3] = para_Feature[feature_index];
-                    para[4] = para_Td[0];
-                    f_td->check(para);
-                    */
+                ProjectionTdFactor *f_td = new ProjectionTdFactor(pts_i, pts_j, it_per_id.feature_per_frame[0].velocity, it_per_frame.velocity,
+                                                                    it_per_id.feature_per_frame[0].cur_td, it_per_frame.cur_td,
+                                                                    it_per_id.feature_per_frame[0].uv.y(), it_per_frame.uv.y());
+                problem.AddResidualBlock(f_td, loss_function, para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index], para_Td[0]);
+                /*
+                double **para = new double *[5];
+                para[0] = para_Pose[imu_i];
+                para[1] = para_Pose[imu_j];
+                para[2] = para_Ex_Pose[0];
+                para[3] = para_Feature[feature_index];
+                para[4] = para_Td[0];
+                f_td->check(para);
+                */
             }
             else
             {
@@ -766,8 +796,8 @@ void Estimator::optimization()
             f_m_cnt++;
         }
     }
-
     ROS_DEBUG("visual measurement count: %d", f_m_cnt);
+    
     ROS_DEBUG("prepare for ceres: %f", t_prepare.toc());
 
     if(relocalization_info)
@@ -850,58 +880,76 @@ void Estimator::optimization()
             marginalization_info->addResidualBlockInfo(residual_block_info);
         }
 
+        if (pre_integrations[1]->sum_dt < 10.0)
         {
-            if (pre_integrations[1]->sum_dt < 10.0)
-            {
-                IMUFactor* imu_factor = new IMUFactor(pre_integrations[1]);
-                ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(imu_factor, NULL,
-                                                                           vector<double *>{para_Pose[0], para_SpeedBias[0], para_Pose[1], para_SpeedBias[1]},
-                                                                           vector<int>{0, 1});
-                marginalization_info->addResidualBlockInfo(residual_block_info);
-            }
+            IMUFactor* imu_factor = new IMUFactor(pre_integrations[1]);
+            ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(imu_factor, NULL,
+                                                                        vector<double *>{para_Pose[0], para_SpeedBias[0], para_Pose[1], para_SpeedBias[1]},
+                                                                        vector<int>{0, 1});
+            marginalization_info->addResidualBlockInfo(residual_block_info);
         }
 
+        int marg_dio_m_cnt = 0;
+        int marg_dio_index = 0;
+        int marg_intg_index = 0;
+        while (marg_dio_index < dio_out.time_stamp.size() && marg_intg_index < pre_integrations[1]->t_buf.size())
         {
-            int feature_index = -1;
-            for (auto &it_per_id : f_manager.feature)
+            if (dio_out.time_stamp[marg_dio_index] < pre_integrations[1]->t_buf[marg_intg_index]-1e-4)
+                marg_dio_index++;
+            else if (dio_out.time_stamp[marg_dio_index] > pre_integrations[1]->t_buf[marg_intg_index]+1e-4)
+                marg_intg_index++;
+            else
             {
-                it_per_id.used_num = it_per_id.feature_per_frame.size();
-                if (!(it_per_id.used_num >= MIN_POBS_NUM && it_per_id.start_frame < WINDOW_SIZE - 2))
+                DIOVelFactor* dio_factor = new DIOVelFactor(pre_integrations[1], dio_out, marg_intg_index, marg_dio_index);
+                ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(dio_factor, NULL,
+                                                                        vector<double *>{para_Pose[0], para_SpeedBias[0]},
+                                                                        vector<int>{0, 1});
+                marg_intg_index++;
+                marg_dio_index++;
+                marg_dio_m_cnt++;
+            }
+        }
+        ROS_INFO("margnalized dio measurement count: %d", marg_dio_m_cnt);
+
+        int feature_index = -1;
+        for (auto &it_per_id : f_manager.feature)
+        {
+            it_per_id.used_num = it_per_id.feature_per_frame.size();
+            if (!(it_per_id.used_num >= MIN_POBS_NUM && it_per_id.start_frame < WINDOW_SIZE - 2))
+                continue;
+
+            ++feature_index;
+
+            int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
+            if (imu_i != 0)
+                continue;
+
+            Vector3d pts_i = it_per_id.feature_per_frame[0].point;
+
+            for (auto &it_per_frame : it_per_id.feature_per_frame)
+            {
+                imu_j++;
+                if (imu_i == imu_j)
                     continue;
 
-                ++feature_index;
-
-                int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
-                if (imu_i != 0)
-                    continue;
-
-                Vector3d pts_i = it_per_id.feature_per_frame[0].point;
-
-                for (auto &it_per_frame : it_per_id.feature_per_frame)
+                Vector3d pts_j = it_per_frame.point;
+                if (ESTIMATE_TD)
                 {
-                    imu_j++;
-                    if (imu_i == imu_j)
-                        continue;
-
-                    Vector3d pts_j = it_per_frame.point;
-                    if (ESTIMATE_TD)
-                    {
-                        ProjectionTdFactor *f_td = new ProjectionTdFactor(pts_i, pts_j, it_per_id.feature_per_frame[0].velocity, it_per_frame.velocity,
-                                                                          it_per_id.feature_per_frame[0].cur_td, it_per_frame.cur_td,
-                                                                          it_per_id.feature_per_frame[0].uv.y(), it_per_frame.uv.y());
-                        ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(f_td, loss_function,
-                                                                                        vector<double *>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index], para_Td[0]},
-                                                                                        vector<int>{0, 3});
-                        marginalization_info->addResidualBlockInfo(residual_block_info);
-                    }
-                    else
-                    {
-                        ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
-                        ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(f, loss_function,
-                                                                                       vector<double *>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index]},
-                                                                                       vector<int>{0, 3});
-                        marginalization_info->addResidualBlockInfo(residual_block_info);
-                    }
+                    ProjectionTdFactor *f_td = new ProjectionTdFactor(pts_i, pts_j, it_per_id.feature_per_frame[0].velocity, it_per_frame.velocity,
+                                                                        it_per_id.feature_per_frame[0].cur_td, it_per_frame.cur_td,
+                                                                        it_per_id.feature_per_frame[0].uv.y(), it_per_frame.uv.y());
+                    ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(f_td, loss_function,
+                                                                                    vector<double *>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index], para_Td[0]},
+                                                                                    vector<int>{0, 3});
+                    marginalization_info->addResidualBlockInfo(residual_block_info);
+                }
+                else
+                {
+                    ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
+                    ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(f, loss_function,
+                                                                                    vector<double *>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index]},
+                                                                                    vector<int>{0, 3});
+                    marginalization_info->addResidualBlockInfo(residual_block_info);
                 }
             }
         }
@@ -1023,6 +1071,7 @@ void Estimator::slideWindow()
                 std::swap(pre_integrations[i], pre_integrations[i + 1]);
 
                 dt_buf[i].swap(dt_buf[i + 1]);
+                t_buf[i].swap(t_buf[i + 1]);
                 linear_acceleration_buf[i].swap(linear_acceleration_buf[i + 1]);
                 angular_velocity_buf[i].swap(angular_velocity_buf[i + 1]);
 
@@ -1043,6 +1092,7 @@ void Estimator::slideWindow()
             pre_integrations[WINDOW_SIZE] = new IntegrationBase{acc_0, gyr_0, Bas[WINDOW_SIZE], Bgs[WINDOW_SIZE]};
 
             dt_buf[WINDOW_SIZE].clear();
+            t_buf[WINDOW_SIZE].clear();
             linear_acceleration_buf[WINDOW_SIZE].clear();
             angular_velocity_buf[WINDOW_SIZE].clear();
 
@@ -1073,13 +1123,14 @@ void Estimator::slideWindow()
         {
             for (unsigned int i = 0; i < dt_buf[frame_count].size(); i++)
             {
-                double tmp_dt = dt_buf[frame_count][i];
+                double tmp_dt = dt_buf[frame_count][i], tmp_t = t_buf[frame_count][i];
                 Vector3d tmp_linear_acceleration = linear_acceleration_buf[frame_count][i];
                 Vector3d tmp_angular_velocity = angular_velocity_buf[frame_count][i];
 
-                pre_integrations[frame_count - 1]->push_back(tmp_dt, tmp_linear_acceleration, tmp_angular_velocity);
+                pre_integrations[frame_count - 1]->push_back(tmp_t, tmp_dt, tmp_linear_acceleration, tmp_angular_velocity);
 
                 dt_buf[frame_count - 1].push_back(tmp_dt);
+                t_buf[frame_count - 1].push_back(tmp_t);
                 linear_acceleration_buf[frame_count - 1].push_back(tmp_linear_acceleration);
                 angular_velocity_buf[frame_count - 1].push_back(tmp_angular_velocity);
             }
@@ -1095,6 +1146,7 @@ void Estimator::slideWindow()
             pre_integrations[WINDOW_SIZE] = new IntegrationBase{acc_0, gyr_0, Bas[WINDOW_SIZE], Bgs[WINDOW_SIZE]};
 
             dt_buf[WINDOW_SIZE].clear();
+            t_buf[WINDOW_SIZE].clear();
             linear_acceleration_buf[WINDOW_SIZE].clear();
             angular_velocity_buf[WINDOW_SIZE].clear();
 

@@ -12,7 +12,7 @@
 // #define DIO_MKDATASET
 
 // Macros for deep-io-based trajectory logging (before fusion with vi/i)
-#define DIO_MKLOG
+// #define DIO_MKLOG
 
 const double FOCAL_LENGTH = 460.0;
 const int WINDOW_SIZE = 10;
