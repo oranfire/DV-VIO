@@ -1,5 +1,5 @@
 <launch>
-    <arg name="config_path" default = "$(find feature_tracker)/../config/vcu/struct_core_v2_dio.yaml" />
+    <arg name="config_path" default = "$(find feature_tracker)/../config/realsense/realsense_d455_dio.yaml" />
 	  <arg name="vins_path" default = "$(find feature_tracker)/../config/../" />
     
     <node name="feature_tracker" pkg="feature_tracker" type="feature_tracker" output="log">

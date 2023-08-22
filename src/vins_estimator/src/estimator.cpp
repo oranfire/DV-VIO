@@ -721,7 +721,8 @@ void Estimator::optimization()
         problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j], para_SpeedBias[j]);
     }
 
-    NetOutput dio_out = dio_manager->buildVelFactor();
+    NetOutput dio_out = dio_manager->buildVelFactor(pre_integrations[1]->t_buf[0]-1e-3, pre_integrations[WINDOW_SIZE]->t_buf[pre_integrations[WINDOW_SIZE]->t_buf.size()-1]+1e-3);
+#ifdef USE_DIO_FACTOR
     int dio_m_cnt = 0;
     int dio_index = 0;
     for (int i = 0; i < WINDOW_SIZE; i++)
@@ -735,7 +736,7 @@ void Estimator::optimization()
                 intg_index++;
             else
             {
-                DIOVelFactor* dio_factor = new DIOVelFactor(pre_integrations[i+1], dio_out, intg_index, dio_index);
+                DIOVelFactor* dio_factor = new DIOVelFactor(pre_integrations[i+1], dio_out, intg_index, dio_index, (double*)&(para_Pose[i]));
                 
                 // double* paras[2] = {(double*)&(para_Pose[i]), (double*)&(para_SpeedBias[i])};
                 // dio_factor->check((double**)paras);
@@ -749,6 +750,27 @@ void Estimator::optimization()
         }
     }
     ROS_INFO("dio measurement count: %d", dio_m_cnt);
+    // if (dio_m_cnt == 0 && Headers[frame_count].stamp.toSec() > 476)
+    // {
+    //     // dio_manager->printStatus();
+    //     std::cout << "dio_out time-stamp: ";
+    //     for (int kk = 0; kk < dio_out.time_stamp.size(); kk++)
+    //     {
+    //         std::cout << dio_out.time_stamp[kk] << ", ";
+    //     }
+    //     std::cout << std::endl;
+    //     for (int ii = 0; ii < WINDOW_SIZE; ii++)
+    //     {
+    //         std::cout << "pre_integration[" << ii+1 <<  "] time-stamp : ";
+    //         for (int kk = 0; kk < pre_integrations[ii+1]->t_buf.size(); kk++)
+    //         {
+    //             std::cout << pre_integrations[ii+1]->t_buf[kk] << ", ";
+    //         }
+    //         std::cout << std::endl;
+    //     }
+    //     exit(1);
+    // }
+#endif
     
     int f_m_cnt = 0;
     int feature_index = -1;
@@ -889,6 +911,7 @@ void Estimator::optimization()
             marginalization_info->addResidualBlockInfo(residual_block_info);
         }
 
+#ifdef USE_DIO_FACTOR
         int marg_dio_m_cnt = 0;
         int marg_dio_index = 0;
         int marg_intg_index = 0;
@@ -900,7 +923,7 @@ void Estimator::optimization()
                 marg_intg_index++;
             else
             {
-                DIOVelFactor* dio_factor = new DIOVelFactor(pre_integrations[1], dio_out, marg_intg_index, marg_dio_index);
+                DIOVelFactor* dio_factor = new DIOVelFactor(pre_integrations[1], dio_out, marg_intg_index, marg_dio_index, (double*)&(para_Pose[0]));
                 ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(dio_factor, NULL,
                                                                         vector<double *>{para_Pose[0], para_SpeedBias[0]},
                                                                         vector<int>{0, 1});
@@ -910,6 +933,7 @@ void Estimator::optimization()
             }
         }
         ROS_INFO("margnalized dio measurement count: %d", marg_dio_m_cnt);
+#endif
 
         int feature_index = -1;
         for (auto &it_per_id : f_manager.feature)

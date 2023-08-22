@@ -118,6 +118,7 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time, bool disca
         vector<uchar> status;
         vector<float> err;
         cv::calcOpticalFlowPyrLK(cur_img, forw_img, cur_pts, forw_pts, status, err, cv::Size(21, 21), 3);
+        int last_pts_num = cur_pts.size();
 
         if (OPTICAL_FLOW_BACK)
         {
@@ -144,6 +145,9 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time, bool disca
         reduceVector(cur_un_pts, status);
         reduceVector(track_cnt, status);
         ROS_DEBUG("temporal optical flow costs: %fms", t_o.toc());
+        // double track_rate = ((double)cur_pts.size())/((double)last_pts_num)*100.0;
+        // track_rates.push_back(track_rate);
+        // ROS_DEBUG("successful optical flow rate: %f%", track_rate);
     }
 
     for (auto &n : track_cnt)

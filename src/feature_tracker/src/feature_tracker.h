@@ -61,5 +61,7 @@ class FeatureTracker
     double cur_time;
     double prev_time;
 
+    vector<double> track_rates;
+
     static int n_id;
 };

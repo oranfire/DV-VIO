@@ -8,6 +8,7 @@
 #include <torch/script.h>
 
 #define NET_IMU_CNT 560
+#define USE_TTA 
 #define AUG_N 8
 
 class NetOutput
@@ -36,6 +37,7 @@ public:
     Eigen::Matrix3d R;
 
     std::vector<Eigen::Vector3d> vels;
+    std::vector<Eigen::Matrix3d> covs;
     Eigen::Vector3d mean_vel;
     Eigen::Matrix3d cov_vel;
 };

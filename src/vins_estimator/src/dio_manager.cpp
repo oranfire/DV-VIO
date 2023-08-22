@@ -67,10 +67,11 @@ void DIOManager::inputData(double time_stamp, const Eigen::Vector3d& gyro, const
         return;
 
     mutex_datas.lock();
-    if (datas.size() == 0 || abs(time_stamp-datas.back().time_stamp-0.01) < 0.001)
+    if (datas.size() == 0 || time_stamp-datas.back().time_stamp > 0.008)
     {
         Eigen::Vector3d r_acc = R*acc-Eigen::Vector3d(0,0,9.805), r_gyro = R*gyro;
         datas.push_back(InfoPerIMU(time_stamp, r_acc, r_gyro, R));
+        // std::cout << "push " << time_stamp << std::endl;
     }
     mutex_datas.unlock();
 }
@@ -166,8 +167,13 @@ void DIOManager::process()
             // Eigen::AngleAxisd rand_rot(0, Eigen::Vector3d::UnitZ());
             for (int j = 0; j < AUG_N; j++)
             {    
+#ifdef USE_TTA
                 aug_accs.push_back((rand_rot.matrix()*aug_Rs[j]*acc).cast<float>());
                 aug_gyros.push_back((rand_rot.matrix()*aug_Rs[j]*gyro).cast<float>());
+#else
+                aug_accs.push_back(acc.cast<float>());
+                aug_gyros.push_back(gyro.cast<float>());
+#endif
             }
 
             std::vector<at::Tensor> imus_tensor;
@@ -183,16 +189,16 @@ void DIOManager::process()
 #else
 #error this is a compile time error message.
 #endif
-            std::cout << "input preprocess time: " << t.toc() << " ms" << std::endl; 
+            // std::cout << "input preprocess time: " << t.toc() << " ms" << std::endl; 
 
             t.tic();
             std::vector<torch::jit::IValue> inputs;
             inputs.push_back(input_tensor.to(device_type));
-            std::cout << "input transfer time: " << t.toc() << " ms" << std::endl;
+            // std::cout << "input transfer time: " << t.toc() << " ms" << std::endl;
 
             t.tic();
             at::Tensor output_tensor = module.forward(inputs).toTensor().to(at::kCPU).reshape(-1); // reshape is required for correct order of storage in memory
-            std::cout << "model forward time: " << t.toc() << " ms" << std::endl;
+            // std::cout << "model forward time: " << t.toc() << " ms" << std::endl;
 
             t.tic();
             mutex_datas.lock();
@@ -205,15 +211,23 @@ void DIOManager::process()
                     index_imu++;
                 for (int k = 0; k < AUG_N; k++)
                 {
+#ifdef USE_TTA
+                    Eigen::Matrix3d R_back = aug_Rs[k].transpose()*rand_rot.matrix().transpose();
+#else
+                    Eigen::Matrix3d R_back = Eigen::Matrix3d::Identity();
+#endif
                     std::vector<float> aug_vel_v(output_tensor.data_ptr<float>()+(k*NET_IMU_CNT+j)*6, output_tensor.data_ptr<float>()+(k*NET_IMU_CNT+j)*6+3);
                     Eigen::Vector3f aug_vel = Eigen::Map<Eigen::Vector3f>(aug_vel_v.data());
-                    Eigen::Vector3d vel = aug_Rs[k].transpose()*rand_rot.matrix().transpose()*aug_vel.cast<double>();
-                    // std::cout << "aug_vel: " << aug_vel.transpose() << std::endl;
+                    Eigen::Vector3d vel = R_back*aug_vel.cast<double>();
                     datas[index_imu].vels.push_back(vel);
+                    std::vector<float> aug_sigma_v(output_tensor.data_ptr<float>()+(k*NET_IMU_CNT+j)*6+3, output_tensor.data_ptr<float>()+(k*NET_IMU_CNT+j)*6+6);
+                    Eigen::Vector3f aug_sigma = Eigen::Map<Eigen::Vector3f>(aug_sigma_v.data());
+                    Eigen::Vector3d aug_sigma_d = aug_sigma.cast<double>().cwiseAbs2();
+                    datas[index_imu].covs.push_back(R_back*aug_sigma_d.asDiagonal()*R_back.transpose());
                 }
             }
             mutex_datas.unlock();
-            std::cout << "model post-process time: " << t.toc() << " ms" << std::endl;
+            // std::cout << "model post-process time: " << t.toc() << " ms" << std::endl;
         }
     }
 }
@@ -226,19 +240,23 @@ NetOutput DIOManager::buildVelFactor(double time_start, double time_end)
     {
         if (datas[i].vels.size() == 0 || datas[i].time_stamp < time_start || datas[i].time_stamp > time_end)
             continue;
+        
         datas[i].mean_vel = Eigen::Vector3d::Zero();
         for (int j = 0; j < datas[i].vels.size(); j++)
         {
             datas[i].mean_vel += datas[i].vels[j]; 
         }
         datas[i].mean_vel /= datas[i].vels.size();
+        
         datas[i].cov_vel = Eigen::Matrix3d::Zero();
-        for (int j = 0; j < datas[i].vels.size(); j++)
+        for (int j = 0; j < datas[i].covs.size(); j++)
         {
-            Eigen::Vector3d delta_vel = datas[i].vels[j]-datas[i].mean_vel;
-            datas[i].cov_vel += delta_vel*delta_vel.transpose(); 
+            datas[i].cov_vel += datas[i].covs[j];
+            // Eigen::Vector3d delta_v = datas[i].vels[j]-datas[i].mean_vel;
+            // datas[i].cov_vel += delta_v*delta_v.transpose(); 
         }
-        datas[i].cov_vel /= datas[i].vels.size();
+        datas[i].cov_vel /= datas[i].covs.size();
+        
         out.time_stamp.push_back(datas[i].time_stamp);
         out.vels.push_back(datas[i].mean_vel);
         out.covs.push_back(datas[i].cov_vel);

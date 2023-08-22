@@ -1,4 +1,5 @@
 #include <ros/ros.h>
+#include <numeric>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/PointCloud.h>
@@ -14,6 +15,26 @@
 vector<uchar> r_status;
 vector<float> r_err;
 queue<sensor_msgs::ImageConstPtr> img_buf;
+
+// record front-end meas
+// #define FE_LOG
+#ifdef FE_LOG
+cv::VideoWriter out_point;
+int end_cnt = 1800, cnt = 0;
+#endif
+
+template<typename T>
+void calstats(std::vector<T> vec, double& mean, double& var, double& size)
+{
+    double sum = std::accumulate(vec.begin(), vec.end(), 0.0);
+    mean = sum / vec.size();
+    var = 0.0;
+    for(int i = 0; i < vec.size(); i++)
+        var += pow(vec[i]-mean, 2);
+    var /= vec.size();
+    var = sqrt(var);
+    size = vec.size();   
+}
 
 ros::Publisher pub_img,pub_match;
 ros::Publisher pub_restart;
@@ -222,9 +243,22 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
                     //sprintf(name, "%d", trackerData[i].ids[j]);
                     //cv::putText(tmp_img, name, trackerData[i].cur_pts[j], cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
                 }
+
             }
             //cv::imshow("vis", stereo_img);
             //cv::waitKey(5);
+#ifdef FE_LOG
+            cnt++;
+            if (cnt <= end_cnt)
+            {
+                out_point << stereo_img;
+                if (cnt == end_cnt)
+                {
+                    out_point.release();
+                    exit(1);
+                }
+            }
+#endif
             pub_match.publish(ptr->toImageMsg());
         }
     }
@@ -240,6 +274,10 @@ int main(int argc, char **argv)
 
     for (int i = 0; i < NUM_OF_CAM; i++)
         trackerData[i].readIntrinsicParameter(CAM_NAMES[i]);
+
+#ifdef FE_LOG
+    out_point.open("/home/oran/WS/Work/SLAM/VINS-DIO/point.avi", CV_FOURCC('M', 'P', '4', '2'), 20, cv::Size(512, 512));
+#endif
 
     if(FISHEYE)
     {
@@ -262,11 +300,18 @@ int main(int argc, char **argv)
     pub_img = n.advertise<sensor_msgs::PointCloud>("feature", 1000);
     pub_match = n.advertise<sensor_msgs::Image>("feature_img",1000);
     pub_restart = n.advertise<std_msgs::Bool>("restart",1000);
-    /*
-    if (SHOW_TRACK)
-        cv::namedWindow("vis", cv::WINDOW_NORMAL);
-    */
+
     ros::spin();
+
+    // std::ofstream foutA("/home/oran/WS/Work/SLAM/VINS-DIO/track.txt", std::ios::out);
+    // double mean = 0.0, var = 0.0, size = 0.0;
+    // calstats(trackerData[0].track_rates, mean, var, size);
+    // foutA << "track_point_time " << mean << " " << var << " " << size << endl;
+    // for (int i = 0; i < trackerData[0].track_rates.size(); i++)
+    // {
+    //     foutA << trackerData[0].track_rates[i] << endl;
+    // }
+
     return 0;
 }
 

@@ -14,13 +14,18 @@ class DIOVelFactor : public ceres::SizedCostFunction<3, 7, 9>
 {
   public:
     DIOVelFactor() = delete;
-    DIOVelFactor(IntegrationBase* _pre_integration, const NetOutput& _preds, int _intg_index, int _dio_index)
+    DIOVelFactor(IntegrationBase* _pre_integration, const NetOutput& _preds, int _intg_index, int _dio_index, double const *parameters)
     {
         jaco_dv_dba = _pre_integration->jacobian_buf[_intg_index].block<3, 3>(O_V, O_BA);
         jaco_dv_dbg = _pre_integration->jacobian_buf[_intg_index].block<3, 3>(O_V, O_BG);
         dv = _pre_integration->dv_buf[_intg_index];
-        cov_dv = _pre_integration->cov_buf[_intg_index].block<3,3>(O_V, O_V) + _preds.covs[_dio_index];
-        sqrt_info = Eigen::LLT<Eigen::Matrix3d>(cov_dv.inverse()).matrixL().transpose();
+
+        cov_dv = _pre_integration->cov_buf[_intg_index].block<3,3>(O_V, O_V);
+        cov_pred = _preds.covs[_dio_index];
+        Eigen::Quaterniond Qi(parameters[6], parameters[3], parameters[4], parameters[5]);
+        Eigen::Matrix3d cov = cov_dv+Qi.toRotationMatrix().transpose()*cov_pred*Qi.toRotationMatrix();
+        sqrt_info = Eigen::LLT<Eigen::Matrix3d>(cov.inverse()).matrixL().transpose();
+
         pred_v =  _preds.vels[_dio_index];
         linear_ba = _pre_integration->linearized_ba;
         linear_bg = _pre_integration->linearized_bg;
@@ -53,7 +58,8 @@ class DIOVelFactor : public ceres::SizedCostFunction<3, 7, 9>
                 Eigen::Map<Eigen::Matrix<double, 3, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
                 jacobian_pose_i.setZero();
 
-                jacobian_pose_i.block<3,3>(0,3) = sqrt_info * Utility::skewSymmetric(Qi.inverse() * (G * sum_t + pred_v - Vi));
+                // jacobian_pose_i.block<3,3>(0,3) = sqrt_info * Utility::skewSymmetric(Qi.inverse() * (G * sum_t + pred_v - Vi));
+                // jacobian_pose_i.block<3,3>(0,3) = sqrt_info * Utility::skewSymmetric(Qi.inverse() * (G * sum_t - Vi)); // view mea. as pred_v in local coord.
 
                 if (jacobian_pose_i.maxCoeff() > 1e8 || jacobian_pose_i.minCoeff() < -1e8)
                 {
@@ -62,6 +68,7 @@ class DIOVelFactor : public ceres::SizedCostFunction<3, 7, 9>
                     ROS_BREAK();
                 }
             }
+
             if (jacobians[1])
             {
                 Eigen::Map<Eigen::Matrix<double, 3, 9, Eigen::RowMajor>> jacobian_speedbias_i(jacobians[1]);
@@ -148,7 +155,7 @@ class DIOVelFactor : public ceres::SizedCostFunction<3, 7, 9>
         std::cout << num_jacobian << std::endl;
     }
     
-    Eigen::Matrix3d jaco_dv_dba, jaco_dv_dbg, cov_dv, sqrt_info;
+    Eigen::Matrix3d jaco_dv_dba, jaco_dv_dbg, cov_dv, cov_pred, sqrt_info;
     double sum_t;
     Eigen::Vector3d pred_v, dv, linear_ba, linear_bg;
 };

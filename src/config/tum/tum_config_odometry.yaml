@@ -44,7 +44,7 @@ extrinsicTranslation: !!opencv-matrix
 
 #feature traker paprameters
 max_cnt: 150            # max feature number in feature tracking
-detect_ratio: 0.0       # ratio of detected features (for sim. of partial~total vision failure)
+detect_ratio: 1.0       # ratio of detected features (for sim. of partial~total vision failure)
 min_dist: 25            # min distance between two features 
 freq: 10                # frequence (Hz) of publish tracking result. At least 10Hz for good estimation. If set 0, the frequence will be same as raw image 
 F_threshold: 1.0        # ransac threshold (pixel)
@@ -56,7 +56,7 @@ fisheye: 1              # if using fisheye, trun on it. A circle mask will be lo
 acc_mult: 1.0
 
 # DIO 
-dio_model_path: "/home/oran/WS/Work/DIO/tdio/results/vcu-tum/ckpt-pc-sigmoid/trace.pt"      # ""
+dio_model_path: "" # "/home/oran/WS/Work/DIO/tdio/results/vcu-tum/ckpt-pc-sigmoid/trace.pt"
 
 #optimization parameters
 max_solver_time: 0.04  # max solver itration time (ms), to guarantee real time
@@ -64,10 +64,10 @@ max_num_iterations: 8   # max solver itrations, to guarantee real time
 keyframe_parallax: 10.0 # keyframe selection threshold (pixel)
 
 #imu parameters       The more accurate parameters you provide, the better performance
-acc_n: 0.04          # accelerometer measurement noise standard deviation. #0.2   0.04
-gyr_n: 0.004         # gyroscope measurement noise standard deviation.     #0.05  0.004
-acc_w: 0.0004         # accelerometer bias random work noise standard deviation.  #0.02
-gyr_w: 2.0e-5       # gyroscope bias random work noise standard deviation.     #4.0e-5
+acc_n: 0.2    # 0.2 # 0.04  
+gyr_n: 0.02   # 0.02 # 0.004
+acc_w: 0.002  # 0.002  # 0.0004
+gyr_w: 1.0e-4  # 1.0e-4 # 2.0e-5
 g_norm: 9.80766     # gravity magnitude
 
 #loop closure parameters
