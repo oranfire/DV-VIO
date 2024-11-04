@@ -1,11 +1,11 @@
 #pragma once
 
+#include <torch/torch.h>
+#include <torch/script.h>
 #include "parameters.h"
 #include "utility/tic_toc.h"
 #include <unordered_map>
 #include <queue>
-#include <torch/torch.h>
-#include <torch/script.h>
 
 #define NET_IMU_CNT 560
 #define USE_TTA 
@@ -70,7 +70,7 @@ class DIOManager
     std::vector<NetInput> getNetInputs();
     void process();
 
-    NetOutput buildVelFactor(double time_start=-DBL_MAX, double time_end=DBL_MAX); 
+    NetOutput buildFactor(double time_start=-DBL_MAX, double time_end=DBL_MAX); 
 
     void printStatus();   
 

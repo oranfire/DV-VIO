@@ -1,8 +1,8 @@
 #pragma once
 
+#include "dio_manager.h"
 #include "parameters.h"
 #include "feature_manager.h"
-#include "dio_manager.h"
 #include "utility/utility.h"
 #include "utility/tic_toc.h"
 #include "initial/solve_5pts.h"
@@ -140,4 +140,10 @@ class Estimator
     Vector3d relo_relative_t;
     Quaterniond relo_relative_q;
     double relo_relative_yaw;
+
+#if defined USE_DIO_FACTOR // DIO_TYPE == 2 && 
+#define TDIST_MIN 0.15
+    bool flag_margold;
+    double last_time;
+#endif
 };

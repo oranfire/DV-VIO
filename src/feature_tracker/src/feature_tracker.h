@@ -30,7 +30,7 @@ class FeatureTracker
   public:
     FeatureTracker();
 
-    void readImage(const cv::Mat &_img,double _cur_time, bool discard_feature=false);
+    void readImage(const cv::Mat &_img,double _cur_time);
 
     void setMask();
 
@@ -61,7 +61,7 @@ class FeatureTracker
     double cur_time;
     double prev_time;
 
-    vector<double> track_rates;
+    vector<double> track_rates, track_length;
 
     static int n_id;
 };

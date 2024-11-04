@@ -5,7 +5,7 @@ std::string IMU_TOPIC;
 std::vector<std::string> CAM_NAMES;
 std::string FISHEYE_MASK;
 int MAX_CNT;
-double DETECT_RATIO;
+int type; // 1: drak, 2: lowlight
 int MIN_DIST;
 int WINDOW_SIZE;
 int FREQ;
@@ -49,7 +49,7 @@ void readParameters(ros::NodeHandle &n)
 
     fsSettings["image_topic"] >> IMAGE_TOPIC;
     fsSettings["imu_topic"] >> IMU_TOPIC;
-    DETECT_RATIO = fsSettings["detect_ratio"];
+    type = fsSettings["type"]; 
     MAX_CNT = fsSettings["max_cnt"];
     MIN_DIST = fsSettings["min_dist"];
     ROW = fsSettings["image_height"];

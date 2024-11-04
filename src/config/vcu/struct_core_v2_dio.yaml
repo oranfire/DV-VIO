@@ -40,7 +40,7 @@ extrinsicTranslation: !!opencv-matrix
 
 # Feature traker paprameters
 max_cnt: 150            # max feature number in feature tracking
-detect_ratio: 0.0       # ratio of detected features (for sim. of partial~total vision failure)
+type: 2                 # for sim. of partial~total vision failure
 min_dist: 30            # min distance between two features 
 freq: 20                # frequence (Hz) of publish tracking result. At least 10Hz for good estimation. If set 0, the frequence will be same as raw image 
 F_threshold: 1.0        # ransac threshold (pixel), typical setting: 1.0
@@ -52,7 +52,7 @@ fisheye: 0              # if using fisheye, trun on it. A circle mask will be lo
 acc_mult: -9.8
 
 # DIO 
-dio_model_path: "/home/oran/WS/Work/DIO/tdio/results/vcu-tum/ckpt-pc-sigmoid/trace.pt"      # ""
+dio_model_path: "/home/oran/WS/Work/DIO/tdio/results/vcu-tum/ckpt-pc-sigmoid/trace.pt"
 
 # Optimization parameters
 max_solver_time: 0.04   # max solver itration time (ms), to guarantee real time
@@ -61,10 +61,12 @@ keyframe_parallax: 20.0 #10.0 # keyframe selection threshold (pixel)
 
 # Imu parameters     The more accurate parameters you provide, the better performance
 acc_n: 0.2       # accelerometer measurement noise standard deviation. 
-gyr_n: 0.02      # gyroscope measurement noise standard deviation.     
+gyr_n: 0.004      # gyroscope measurement noise standard deviation.     
 acc_w: 0.002     # accelerometer bias random work noise standard deviation.  
-gyr_w: 0.0001    # gyroscope bias random work noise standard deviation.     
+gyr_w: 4.0e-5    # gyroscope bias random work noise standard deviation.    
 g_norm: 9.81     # gravity magnitude
+
+# past para for VINS-TDIO w/o marg & diff. R: 0.2 0.02 0.002 0.0001
 
 # Loop closure
 loop_closure: 0   #if you want to use loop closure to minimize the drift, set loop_closure true and give your brief pattern file path and vocabulary file path accordingly;

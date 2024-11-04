@@ -21,11 +21,17 @@
 
 extern ros::Publisher pub_odometry;
 extern ros::Publisher pub_path, pub_pose;
+#ifdef DIO_MKLOG
+extern ros::Publisher pub_dio_path;
+#endif
 extern ros::Publisher pub_cloud, pub_map;
 extern ros::Publisher pub_key_poses;
 extern ros::Publisher pub_ref_pose, pub_cur_pose;
 extern ros::Publisher pub_key;
 extern nav_msgs::Path path;
+#ifdef DIO_MKLOG
+extern nav_msgs::Path dio_path;
+#endif
 extern ros::Publisher pub_pose_graph;
 extern int IMAGE_ROW, IMAGE_COL;
 

@@ -47,7 +47,7 @@ Estimator estimator;
 
 ros::Publisher pub_init_finished;
 int init_elapse_cnt = 0;
-#define MAX_INIT_ELAPSE_CNT 10
+#define MAX_INIT_ELAPSE_CNT 50
 
 std::condition_variable con;
 double current_time = -1;

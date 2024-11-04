@@ -85,7 +85,7 @@ void FeatureTracker::addPoints()
     }
 }
 
-void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time, bool discard_feature)
+void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
 {
     cv::Mat img;
     TicToc t_r;
@@ -138,16 +138,20 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time, bool disca
         for (int i = 0; i < int(forw_pts.size()); i++)
             if (status[i] && !inBorder(forw_pts[i]))
                 status[i] = 0;
+        for (int i = 0; i < track_cnt.size(); i++)
+            if (status[i] == 0)
+                track_length.push_back(track_cnt[i]);
         reduceVector(prev_pts, status);
         reduceVector(cur_pts, status);
         reduceVector(forw_pts, status);
         reduceVector(ids, status);
         reduceVector(cur_un_pts, status);
         reduceVector(track_cnt, status);
+        
         ROS_DEBUG("temporal optical flow costs: %fms", t_o.toc());
-        // double track_rate = ((double)cur_pts.size())/((double)last_pts_num)*100.0;
-        // track_rates.push_back(track_rate);
-        // ROS_DEBUG("successful optical flow rate: %f%", track_rate);
+        double track_rate = ((double)cur_pts.size())/((double)last_pts_num)*100.0;
+        track_rates.push_back(track_rate);
+        ROS_DEBUG("successful optical flow rate: %f%", track_rate);
     }
 
     for (auto &n : track_cnt)
@@ -163,11 +167,7 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time, bool disca
 
         ROS_DEBUG("detect feature begins");
         TicToc t_t;
-        int n_max_cnt;
-        if (discard_feature == true)
-            n_max_cnt = MAX_CNT*DETECT_RATIO - static_cast<int>(forw_pts.size());
-        else
-            n_max_cnt = MAX_CNT - static_cast<int>(forw_pts.size());
+        int n_max_cnt = MAX_CNT - static_cast<int>(forw_pts.size());
         if (n_max_cnt > 0)
         {
             if(mask.empty())

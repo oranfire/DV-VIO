@@ -51,6 +51,7 @@ class IntegrationBase
         jacobian_buf.clear();
         cov_buf.clear();
         dv_buf.clear();
+        dp_buf.clear();
         for (int i = 0; i < static_cast<int>(dt_buf.size()); i++)
             propagate(dt_buf[i], acc_buf[i], gyr_buf[i]);
     }
@@ -162,7 +163,7 @@ class IntegrationBase
         acc_0 = acc_1;
         gyr_0 = gyr_1;  
         dv_buf.push_back(delta_v);
-     
+        dp_buf.push_back(delta_p);
     }
 
     Eigen::Matrix<double, 15, 1> evaluate(const Eigen::Vector3d &Pi, const Eigen::Quaterniond &Qi, const Eigen::Vector3d &Vi, const Eigen::Vector3d &Bai, const Eigen::Vector3d &Bgi,
@@ -216,6 +217,6 @@ class IntegrationBase
     
     std::vector<Eigen::Matrix<double,15,15>> jacobian_buf;
     std::vector<Eigen::Matrix<double,15,15>> cov_buf;
-    std::vector<Eigen::Vector3d> dv_buf;
+    std::vector<Eigen::Vector3d> dv_buf, dp_buf;
 
 };

@@ -4,18 +4,30 @@ using namespace ros;
 using namespace Eigen;
 ros::Publisher pub_odometry, pub_latest_odometry;
 ros::Publisher pub_path, pub_relo_path;
+#ifdef DIO_MKLOG
+ros::Publisher pub_dio_path;
+#endif
 ros::Publisher pub_point_cloud, pub_margin_cloud;
 ros::Publisher pub_key_poses;
 ros::Publisher pub_relo_relative_pose;
 ros::Publisher pub_camera_pose;
 ros::Publisher pub_camera_pose_visual;
+#ifdef DIO_MKLOG
+ros::Publisher pub_dio_camera_pose_visual;
+#endif
 nav_msgs::Path path, relo_path;
+#ifdef DIO_MKLOG
+nav_msgs::Path dio_path;
+#endif
 
 ros::Publisher pub_keyframe_pose;
 ros::Publisher pub_keyframe_point;
 ros::Publisher pub_extrinsic;
 
 CameraPoseVisualization cameraposevisual(0, 1, 0, 1);
+#ifdef DIO_MKLOG
+CameraPoseVisualization diocameraposevisual(1, 1, 0, 1);
+#endif
 CameraPoseVisualization keyframebasevisual(0.0, 0.0, 1.0, 1.0);
 static double sum_of_path = 0;
 static Vector3d last_path(0.0, 0.0, 0.0);
@@ -25,12 +37,18 @@ void registerPub(ros::NodeHandle &n)
     pub_latest_odometry = n.advertise<nav_msgs::Odometry>("imu_propagate", 1000);
     pub_path = n.advertise<nav_msgs::Path>("path", 1000);
     pub_relo_path = n.advertise<nav_msgs::Path>("relocalization_path", 1000);
+#ifdef DIO_MKLOG
+    pub_dio_path = n.advertise<nav_msgs::Path>("dio_path", 1000);
+#endif
     pub_odometry = n.advertise<nav_msgs::Odometry>("odometry", 1000);
     pub_point_cloud = n.advertise<sensor_msgs::PointCloud>("point_cloud", 1000);
     pub_margin_cloud = n.advertise<sensor_msgs::PointCloud>("history_cloud", 1000);
     pub_key_poses = n.advertise<visualization_msgs::Marker>("key_poses", 1000);
     pub_camera_pose = n.advertise<nav_msgs::Odometry>("camera_pose", 1000);
     pub_camera_pose_visual = n.advertise<visualization_msgs::MarkerArray>("camera_pose_visual", 1000);
+#ifdef DIO_MKLOG
+    pub_dio_camera_pose_visual = n.advertise<visualization_msgs::MarkerArray>("dio_camera_pose_visual", 1000);
+#endif
     pub_keyframe_pose = n.advertise<nav_msgs::Odometry>("keyframe_pose", 1000);
     pub_keyframe_point = n.advertise<sensor_msgs::PointCloud>("keyframe_point", 1000);
     pub_extrinsic = n.advertise<nav_msgs::Odometry>("extrinsic", 1000);
@@ -38,6 +56,10 @@ void registerPub(ros::NodeHandle &n)
 
     cameraposevisual.setScale(1);
     cameraposevisual.setLineWidth(0.05);
+#ifdef DIO_MKLOG
+    diocameraposevisual.setScale(1);
+    diocameraposevisual.setLineWidth(0.05);
+#endif
     keyframebasevisual.setScale(0.1);
     keyframebasevisual.setLineWidth(0.01);
 }
@@ -185,6 +207,25 @@ void pubOdometry(const Estimator &estimator, const std_msgs::Header &header)
                 << dio_q.z() << " " 
                 << dio_q.w() << endl;
             foutD.close();
+
+            geometry_msgs::Pose pose;
+            pose.position.x = estimator.dio_manager->trajs.back().P.x();
+            pose.position.y = estimator.dio_manager->trajs.back().P.y();
+            pose.position.z = estimator.dio_manager->trajs.back().P.z();
+            pose.orientation.x = dio_q.x();
+            pose.orientation.y = dio_q.y();
+            pose.orientation.z = dio_q.z();
+            pose.orientation.w = dio_q.w();
+            
+            geometry_msgs::PoseStamped pose_stamped;
+            pose_stamped.header = header;
+            pose_stamped.header.stamp.fromSec(estimator.dio_manager->trajs.back().time_stamp);
+            pose_stamped.header.frame_id = "world";
+            pose_stamped.pose = pose;
+            dio_path.header = header;
+            dio_path.header.frame_id = "world";
+            dio_path.poses.push_back(pose_stamped);
+            pub_dio_path.publish(dio_path);
         }
 #endif
     }
@@ -250,6 +291,21 @@ void pubCameraPose(const Estimator &estimator, const std_msgs::Header &header)
         cameraposevisual.reset();
         cameraposevisual.add_pose(P, R);
         cameraposevisual.publish_by(pub_camera_pose_visual, odometry.header);
+
+#ifdef DIO_MKLOG
+        if (estimator.dio_manager->trajs.size() > 0)
+        {
+            diocameraposevisual.reset();
+            Matrix3d dio_R = estimator.dio_manager->trajs.back().R;
+            Vector3d dio_p = estimator.dio_manager->trajs.back().P;
+            P = dio_p + dio_R * estimator.tic[0];
+            R = Quaterniond(dio_R * estimator.ric[0]);
+            diocameraposevisual.add_pose(P, R);
+            std_msgs::Header header = odometry.header;
+            header.stamp.fromSec(estimator.dio_manager->trajs.back().time_stamp);
+            diocameraposevisual.publish_by(pub_dio_camera_pose_visual, header);
+        }
+#endif
     }
 }
 

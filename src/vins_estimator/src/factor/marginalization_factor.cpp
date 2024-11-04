@@ -289,7 +289,7 @@ void MarginalizationInfo::marginalize()
 
     linearized_jacobians = S_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
     linearized_residuals = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose() * b;
-    //std::cout << A << std::endl
+    // std::cout << A << std::endl
     //          << std::endl;
     //std::cout << linearized_jacobians << std::endl;
     //printf("error2: %f %f\n", (linearized_jacobians.transpose() * linearized_jacobians - A).sum(),

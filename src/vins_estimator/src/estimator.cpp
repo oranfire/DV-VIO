@@ -64,7 +64,6 @@ void Estimator::clearState()
     all_image_frame.clear();
     td = TD;
 
-
     if (tmp_pre_integration != nullptr)
         delete tmp_pre_integration;
     if (last_marginalization_info != nullptr)
@@ -81,6 +80,11 @@ void Estimator::clearState()
 
     drift_correct_r = Matrix3d::Identity();
     drift_correct_t = Vector3d::Zero();
+
+#if defined USE_DIO_FACTOR // DIO_TYPE == 2 && 
+    flag_margold = false;
+    last_time = -1;
+#endif
 }
 
 void Estimator::processIMU(double t, double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity)
@@ -124,6 +128,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
 {
     ROS_DEBUG("new image coming ------------------------------------------");
     ROS_DEBUG("Adding feature points %lu", image.size());
+
     if (f_manager.addFeatureCheckParallax(frame_count, image, td))
         marginalization_flag = MARGIN_OLD;
     else
@@ -203,10 +208,8 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         //     return;
         // }
 
-        TicToc t_margin;
         slideWindow();
         f_manager.removeFailures();
-        ROS_DEBUG("marginalization costs: %fms", t_margin.toc());
         // prepare output of VINS
         key_poses.clear();
         for (int i = 0; i <= WINDOW_SIZE; i++)
@@ -721,7 +724,15 @@ void Estimator::optimization()
         problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j], para_SpeedBias[j]);
     }
 
-    NetOutput dio_out = dio_manager->buildVelFactor(pre_integrations[1]->t_buf[0]-1e-3, pre_integrations[WINDOW_SIZE]->t_buf[pre_integrations[WINDOW_SIZE]->t_buf.size()-1]+1e-3);
+#ifdef DIO_MKLOG
+    NetOutput dio_out = dio_manager->buildFactor();
+#else
+#ifdef USE_DIO_FACTOR
+    NetOutput dio_out = dio_manager->buildFactor(pre_integrations[1]->t_buf[0]-1e-3, pre_integrations[WINDOW_SIZE]->t_buf[pre_integrations[WINDOW_SIZE]->t_buf.size()-1]+1e-3);
+    // ROS_WARN("window time: %fs, %f ~%f", pre_integrations[WINDOW_SIZE]->t_buf[pre_integrations[WINDOW_SIZE]->t_buf.size()-1]-pre_integrations[1]->t_buf[0], pre_integrations[1]->t_buf[0], pre_integrations[WINDOW_SIZE]->t_buf[pre_integrations[WINDOW_SIZE]->t_buf.size()-1]);
+#endif
+#endif
+
 #ifdef USE_DIO_FACTOR
     int dio_m_cnt = 0;
     int dio_index = 0;
@@ -750,26 +761,6 @@ void Estimator::optimization()
         }
     }
     ROS_INFO("dio measurement count: %d", dio_m_cnt);
-    // if (dio_m_cnt == 0 && Headers[frame_count].stamp.toSec() > 476)
-    // {
-    //     // dio_manager->printStatus();
-    //     std::cout << "dio_out time-stamp: ";
-    //     for (int kk = 0; kk < dio_out.time_stamp.size(); kk++)
-    //     {
-    //         std::cout << dio_out.time_stamp[kk] << ", ";
-    //     }
-    //     std::cout << std::endl;
-    //     for (int ii = 0; ii < WINDOW_SIZE; ii++)
-    //     {
-    //         std::cout << "pre_integration[" << ii+1 <<  "] time-stamp : ";
-    //         for (int kk = 0; kk < pre_integrations[ii+1]->t_buf.size(); kk++)
-    //         {
-    //             std::cout << pre_integrations[ii+1]->t_buf[kk] << ", ";
-    //         }
-    //         std::cout << std::endl;
-    //     }
-    //     exit(1);
-    // }
 #endif
     
     int f_m_cnt = 0;
@@ -818,7 +809,7 @@ void Estimator::optimization()
             f_m_cnt++;
         }
     }
-    ROS_DEBUG("visual measurement count: %d", f_m_cnt);
+    ROS_INFO("visual measurement count: %d", f_m_cnt);
     
     ROS_DEBUG("prepare for ceres: %f", t_prepare.toc());
 
@@ -927,6 +918,7 @@ void Estimator::optimization()
                 ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(dio_factor, NULL,
                                                                         vector<double *>{para_Pose[0], para_SpeedBias[0]},
                                                                         vector<int>{0, 1});
+                marginalization_info->addResidualBlockInfo(residual_block_info);
                 marg_intg_index++;
                 marg_dio_index++;
                 marg_dio_m_cnt++;

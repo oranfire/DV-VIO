@@ -40,7 +40,7 @@ extrinsicTranslation: !!opencv-matrix
 
 # Feature traker paprameters
 max_cnt: 150            # max feature number in feature tracking
-detect_ratio: 1.0       # ratio of detected features (for sim. of partial~total vision failure)
+type: 0       # ratio of detected features (for sim. of partial~total vision failure)
 min_dist: 30            # min distance between two features 
 freq: 10                # frequence (Hz) of publish tracking result. At least 10Hz for good estimation. If set 0, the frequence will be same as raw image 
 F_threshold: 1.0        # ransac threshold (pixel), typical setting: 1.0
@@ -52,7 +52,7 @@ fisheye: 0              # if using fisheye, trun on it. A circle mask will be lo
 acc_mult: 1.0
 
 # DIO 
-dio_model_path: "/home/oran/WS/Work/DIO/tdio/results/vcu-tum/ckpt-pc-sigmoid/trace.pt"      # "/home/oran/WS/Work/DIO/tdio/results/vcu-tum/ckpt-pc-sigmoid/trace.pt"
+dio_model_path: ""      # "/home/oran/WS/Work/DIO/tdio/results/vcu-tum/ckpt-pc-sigmoid/trace.pt"
 
 # Optimization parameters
 max_solver_time: 0.04   # max solver itration time (ms), to guarantee real time

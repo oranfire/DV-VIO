@@ -67,7 +67,7 @@ void DIOManager::inputData(double time_stamp, const Eigen::Vector3d& gyro, const
         return;
 
     mutex_datas.lock();
-    if (datas.size() == 0 || time_stamp-datas.back().time_stamp > 0.008)
+    if (datas.size() == 0 || time_stamp-datas.back().time_stamp > 0.0085) // 100 Hz input
     {
         Eigen::Vector3d r_acc = R*acc-Eigen::Vector3d(0,0,9.805), r_gyro = R*gyro;
         datas.push_back(InfoPerIMU(time_stamp, r_acc, r_gyro, R));
@@ -232,7 +232,7 @@ void DIOManager::process()
     }
 }
 
-NetOutput DIOManager::buildVelFactor(double time_start, double time_end)
+NetOutput DIOManager::buildFactor(double time_start, double time_end)
 {
     NetOutput out;
     mutex_datas.lock();
@@ -242,20 +242,26 @@ NetOutput DIOManager::buildVelFactor(double time_start, double time_end)
             continue;
         
         datas[i].mean_vel = Eigen::Vector3d::Zero();
+#ifdef USE_TTA
         for (int j = 0; j < datas[i].vels.size(); j++)
         {
             datas[i].mean_vel += datas[i].vels[j]; 
         }
         datas[i].mean_vel /= datas[i].vels.size();
-        
+#else
+        datas[i].mean_vel = datas[i].vels[0];
+#endif
+
         datas[i].cov_vel = Eigen::Matrix3d::Zero();
+#ifdef USE_TTA
         for (int j = 0; j < datas[i].covs.size(); j++)
         {
             datas[i].cov_vel += datas[i].covs[j];
-            // Eigen::Vector3d delta_v = datas[i].vels[j]-datas[i].mean_vel;
-            // datas[i].cov_vel += delta_v*delta_v.transpose(); 
         }
         datas[i].cov_vel /= datas[i].covs.size();
+#else
+        datas[i].cov_vel = datas[i].covs[0];
+#endif
         
         out.time_stamp.push_back(datas[i].time_stamp);
         out.vels.push_back(datas[i].mean_vel);
